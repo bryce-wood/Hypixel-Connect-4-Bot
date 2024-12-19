@@ -10,36 +10,64 @@ st = t.time()
 # This is the function that will process each board state
 def make_boards(board=0, depth=15, mem={}):
     player = 1 if depth % 2 == 1 else 2
+    opponent = 2 if player == 1 else 1
 
     # if at the desired depth, we want the win
-    if depth == 0:
-        win = bo.find_win(board)
-        if win == 2:
-            return 100, mem
-        elif win == 1:
-            return (-100), mem
-        else:
-            return 0, mem
+    if depth <= 0:
+        return 0, mem
 
     valid_positions = bo.find_valid_positions(board)
+    best_score = -float('inf') if player == 1 else float('inf')
+    best_mem = mem
+
     for pos in valid_positions:
         # Set the X or O on the board
         test_board = bo.set_position(board, pos, player)
 
         win = bo.find_win(test_board)
-        if win == 0:
-            if test_board not in mem:
-                mem[test_board] = (make_boards(test_board, depth - 1, mem)[0], depth - 1)
-            else: 
-                if mem[test_board][1] < depth - 1:
-                    mem[test_board] = (make_boards(test_board, depth - 1, mem)[0], depth - 1)
-                return mem[test_board][0], mem
-        elif win == 2:
-            return 100, mem
-        else: # win == 1
-            return (-100), mem
+        if win == player:
+            score = 100 if player == 2 else -100
+            return score, mem
 
-    return 0, mem  # Default return if no valid moves left
+        # Check if the opponent can win on their next move
+        opponent_wins = False
+        opponent_positions = bo.find_valid_positions(test_board)
+        for opp_pos in opponent_positions:
+            opponent_board = bo.set_position(test_board, opp_pos, opponent)
+            if bo.find_win(opponent_board) == opponent:
+                opponent_wins = True
+                break
+
+        if not opponent_wins:
+            if test_board not in mem:
+                score, new_mem = make_boards(test_board, depth - 1, mem)
+                mem[test_board] = (score, depth - 1)
+            else:
+                if mem[test_board][1] < depth - 1:
+                    score, new_mem = make_boards(test_board, depth - 1, mem)
+                    mem[test_board] = (score, depth - 1)
+                else:
+                    score = mem[test_board][0]
+                    new_mem = mem
+
+            if player == 1:
+                if score > best_score:
+                    best_score = score
+                    best_mem = new_mem
+            else:
+                if score < best_score:
+                    best_score = score
+                    best_mem = new_mem
+
+    # If no valid move prevents opponent's win, make any valid move
+    if best_score == -float('inf') or best_score == float('inf'):
+        pos = valid_positions[0]
+        test_board = bo.set_position(board, pos, player)
+        score, new_mem = make_boards(test_board, depth - 1, mem)
+        best_score = score
+        best_mem = new_mem
+
+    return best_score, best_mem  # Return the best score and memory
 
 
 # Wrapper function for parallel processing
@@ -77,7 +105,7 @@ if __name__ == '__main__':
     boards = load_boards_from_pickle()
     parallel_make_boards()
     for key, value in boards.items():
-        if value[0] == 100:
+        if value[0] != 0:
             bo.print_board(key)
             print(key, value)
     #print("Num boards:", len(boards))
